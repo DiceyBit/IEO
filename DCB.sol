@@ -10,8 +10,6 @@ for more details.
 You should have received a copy of the GNU lesser General Public License
 along with the DiceybitToken Contract. If not, see <http://www.gnu.org/licenses/>.
 
-@author Ilya Svirin <i.svirin@nordavind.ru>
-Donation address 0x3Ad38D1060d1c350aF29685B2b8Ec3eDE527452B
 */
 
 
