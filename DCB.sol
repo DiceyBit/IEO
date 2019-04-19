@@ -88,10 +88,10 @@ contract DiceyBitToken is owned {
     function mintTokens(address minter, uint tokens, uint8 originalCoinType, bytes32 originalTxHash) public {
         require(msg.sender==diceybitBackend);
         require(!crowdsaleFinished);
-        balanceOf[_minter]=balanceOf[_minter].add(_tokens);
-        totalSupply=totalSupply.add(_tokens);
+        balanceOf[minter]=balanceOf[minter].add(tokens);
+        totalSupply=totalSupply.add(tokens);
         emit Transfer(address(this), minter, tokens);
-        emit Mint(_minter, tokens, originalCoinType, _originalTxHash);
+        emit Mint(minter, tokens, originalCoinType, originalTxHash);
     }
     
     function finishCrowdsale() onlyOwner public {
@@ -100,32 +100,43 @@ contract DiceyBitToken is owned {
 
     function transfer(address to, uint256 value)
         public onlyPayloadSize(2*32) returns(bool) {
-        require(balanceOf[msg.sender]>=_value);
-        balanceOf[msg.sender]=balanceOf[msg.sender].sub(_value);
-        balanceOf[_to]=balanceOf[_to].add(_value);
+        require(balanceOf[msg.sender]>=value);
+        balanceOf[msg.sender]=balanceOf[msg.sender].sub(value);
+        balanceOf[to]=balanceOf[to].add(value);
         emit Transfer(msg.sender, to, value);
         return true;
     }
     
-    function transferFrom(address from, address to, uint _value)
+    function transferFrom(address from, address to, uint value)
         public onlyPayloadSize(3*32) returns(bool) {
-        require(balanceOf[_from]>=_value);
-        require(allowed[_from][msg.sender]>=_value);
-        balanceOf[_from]=balanceOf[_from].sub(_value);
-        balanceOf[_to]=balanceOf[_to].add(_value);
-        allowed[_from][msg.sender]=allowed[_from][msg.sender].sub(_value);
-        emit Transfer(_from, to, value);
+        require(balanceOf[from]>=value);
+        require(allowed[from][msg.sender]>=value);
+        balanceOf[from]=balanceOf[from].sub(value);
+        balanceOf[to]=balanceOf[to].add(value);
+        allowed[from][msg.sender]=allowed[from][msg.sender].sub(value);
+        emit Transfer(from, to, value);
         return true;
     }
 
     function approve(address spender, uint value) public returns(bool) {
-        allowed[msg.sender][_spender]=_value;
+        allowed[msg.sender][spender]=value;
         emit Approval(msg.sender, spender, value);
         return true;
     }
 
-    function allowance(address owner, address spender) public view
-        returns (uint remaining) {
-        return allowed[_owner][_spender];
+    function allowance(address owner, address spender) public view returns (uint) {
+        return allowed[owner][spender];
+    }
+    
+    function burn(uint256 value) public {
+        _burn(msg.sender, value);
+    }
+    
+    function _burn(address account, uint256 value) internal {
+        require(account != address(0));
+
+        totalSupply=totalSupply.sub(value);
+        balanceOf[account]=balanceOf[account].sub(value);
+        emit Transfer(account, address(0), value);
     }
 }
