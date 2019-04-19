@@ -25,7 +25,7 @@ contract owned {
     }
     
     modifier onlyOwner {
-        require(owner==msg.sender);
+        require(owner==msg.sender, "not allowed");
         _;
     }
 
@@ -34,7 +34,7 @@ contract owned {
     }
     
     function confirmOwner() public {
-        require(candidate==msg.sender);
+        require(candidate==msg.sender, "wrong candidate");
         owner=candidate;
         delete candidate;
     }
@@ -57,6 +57,7 @@ library SafeMath {
 contract DiceyBitToken is owned {
     using SafeMath for uint;
 
+    uint                         public buybackPriceWei; // if zero, not buyback available
     address                      public diceybitBackend;
     bool                         public crowdsaleFinished;
     uint                         public totalSupply;
@@ -74,7 +75,7 @@ contract DiceyBitToken is owned {
 
     // Fix for the ERC20 short address attack
     modifier onlyPayloadSize(uint size) {
-        require(msg.data.length>=size+4);
+        require(msg.data.length>=size+4, "short address attack");
         _;
     }
 
@@ -85,8 +86,12 @@ contract DiceyBitToken is owned {
         diceybitBackend=_diceybitBackend;
     }
     
+    function setBuybackPrice(uint priceWei) public onlyOwner {
+        buybackPriceWei=priceWei;
+    }
+    
     function mintTokens(address minter, uint tokens, uint8 originalCoinType, bytes32 originalTxHash) public {
-        require(msg.sender==diceybitBackend);
+        require(msg.sender==diceybitBackend, "available for backend only");
         require(!crowdsaleFinished);
         balanceOf[minter]=balanceOf[minter].add(tokens);
         totalSupply=totalSupply.add(tokens);
@@ -98,23 +103,32 @@ contract DiceyBitToken is owned {
         crowdsaleFinished=true;
     }
 
-    function transfer(address to, uint256 value)
+    function transfer(address to, uint value)
         public onlyPayloadSize(2*32) returns(bool) {
-        require(balanceOf[msg.sender]>=value);
-        balanceOf[msg.sender]=balanceOf[msg.sender].sub(value);
-        balanceOf[to]=balanceOf[to].add(value);
-        emit Transfer(msg.sender, to, value);
+        require(balanceOf[msg.sender]>=value, "not enough tokens for transfer");
+        if(to==address(this)) {
+            _doBuyback(msg.sender, value);
+        } else {
+            balanceOf[msg.sender]=balanceOf[msg.sender].sub(value);
+            balanceOf[to]=balanceOf[to].add(value);
+            emit Transfer(msg.sender, to, value);
+        }
         return true;
     }
     
-    function transferFrom(address from, address to, uint value)
+    function transferFrom(address payable from, address to, uint value)
         public onlyPayloadSize(3*32) returns(bool) {
-        require(balanceOf[from]>=value);
+        require(balanceOf[from]>=value, "not enough tokens for transferFrom");
         require(allowed[from][msg.sender]>=value);
-        balanceOf[from]=balanceOf[from].sub(value);
-        balanceOf[to]=balanceOf[to].add(value);
-        allowed[from][msg.sender]=allowed[from][msg.sender].sub(value);
-        emit Transfer(from, to, value);
+        if(to==address(this)) {
+            allowed[from][msg.sender]=allowed[from][msg.sender].sub(value);
+            _doBuyback(from, value);
+        } else {
+            balanceOf[from]=balanceOf[from].sub(value);
+            balanceOf[to]=balanceOf[to].add(value);
+            allowed[from][msg.sender]=allowed[from][msg.sender].sub(value);
+            emit Transfer(from, to, value);
+        }
         return true;
     }
 
@@ -124,8 +138,8 @@ contract DiceyBitToken is owned {
         return true;
     }
 
-    function allowance(address owner, address spender) public view returns (uint) {
-        return allowed[owner][spender];
+    function allowance(address holder, address spender) public view returns (uint) {
+        return allowed[holder][spender];
     }
     
     function burn(uint256 value) public {
@@ -133,10 +147,28 @@ contract DiceyBitToken is owned {
     }
     
     function _burn(address account, uint256 value) internal {
-        require(account != address(0));
+        require(account != address(0), "zero address");
 
         totalSupply=totalSupply.sub(value);
         balanceOf[account]=balanceOf[account].sub(value);
         emit Transfer(account, address(0), value);
+    }
+    
+    function _doBuyback(address payable holder, uint tokens) internal {
+        require(buybackPriceWei!=0, "backback disabled");
+        
+        uint weiValue=tokens*buybackPriceWei;
+        require(address(this).balance>=weiValue, "not enough ether");
+        
+        _burn(holder, tokens);
+        holder.transfer(weiValue);
+    }
+    
+    function () payable external {
+        // makes it available to send ether to smartcontract
+    }
+    
+    function withdraw() public onlyOwner {
+        msg.sender.transfer(address(this).balance);
     }
 }
